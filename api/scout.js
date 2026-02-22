@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     // --- Vertex AI ---
     const vertexAI = getVertexClient();
     const model = vertexAI.getGenerativeModel({
-      model: "gemini-1.5-pro",
+      model: "gemini-2.0-flash",
       generationConfig: {
         responseMimeType: "application/json",
       },
