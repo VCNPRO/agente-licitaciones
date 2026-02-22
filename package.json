@@ -12,6 +12,6 @@
   "type": "module",
   "dependencies": {
     "@google-cloud/vertexai": "^1.10.0",
-    "rss-parser": "^3.13.0"
+    "@xmldom/xmldom": "^0.8.11"
   }
 }

@@ -1,16 +1,34 @@
 import { VertexAI } from "@google-cloud/vertexai";
-import Parser from "rss-parser";
+import { DOMParser } from "@xmldom/xmldom";
 
 const FEED_URL =
-  "https://contrataciondelestado.es/sindicacion/sindicacion_1044/licitacionesPerfilesContratanteCompleto3.atom";
+  "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom";
 
 const SYSTEM_PROMPT = `Eres un experto clasificador de licitaciones públicas B2B para Mediasolam. Clasifica este contrato en una de estas apps: SCRIPTORIUMIA, VERBADOCSALUD, ANNALYSISMEDIA, VERBADOCPRO, VIDEOCONVERSION, o DESCARTADO. Devuelve SOLO un JSON válido con estas claves: Aplicacion_Mediasolam, Nivel_de_Encaje, Presupuesto_Estimado, Resumen_Ejecutivo, Angulo_de_Venta.`;
 
+function parseAtomFeed(xml) {
+  const doc = new DOMParser().parseFromString(xml, "text/xml");
+  const entries = doc.getElementsByTagName("entry");
+  const items = [];
+
+  for (let i = 0; i < Math.min(entries.length, 5); i++) {
+    const entry = entries[i];
+    const title =
+      entry.getElementsByTagName("title")[0]?.textContent || "Sin título";
+    const summary =
+      entry.getElementsByTagName("summary")[0]?.textContent || "Sin descripción";
+    const linkEl = entry.getElementsByTagName("link")[0];
+    const link = linkEl?.getAttribute("href") || "";
+    const id = entry.getElementsByTagName("id")[0]?.textContent || "";
+
+    items.push({ title, summary, link, id });
+  }
+
+  return items;
+}
+
 function buildPrompt(item) {
-  const titulo = item.title || "Sin título";
-  const descripcion =
-    item.contentSnippet || item.content || item.summary || "Sin descripción";
-  return `${SYSTEM_PROMPT}\n\nTítulo: ${titulo}\nDescripción: ${descripcion}`;
+  return `${SYSTEM_PROMPT}\n\nTítulo: ${item.title}\nDescripción: ${item.summary}`;
 }
 
 function getVertexClient() {
@@ -49,10 +67,20 @@ export default async function handler(req, res) {
       },
     });
 
-    // --- RSS Feed ---
-    const parser = new Parser();
-    const feed = await parser.parseURL(FEED_URL);
-    const items = feed.items.slice(0, 5);
+    // --- Atom Feed ---
+    const feedResponse = await fetch(FEED_URL, {
+      headers: {
+        Accept: "application/atom+xml",
+        "User-Agent": "AgenteLicitaciones/1.0",
+      },
+    });
+
+    if (!feedResponse.ok) {
+      throw new Error(`Feed HTTP ${feedResponse.status}`);
+    }
+
+    const xml = await feedResponse.text();
+    const items = parseAtomFeed(xml);
 
     // --- Clasificación ---
     const oportunidades = [];
@@ -69,8 +97,8 @@ export default async function handler(req, res) {
 
       if (clasificacion.Aplicacion_Mediasolam !== "DESCARTADO") {
         oportunidades.push({
-          titulo: item.title || "Sin título",
-          link: item.link || "",
+          titulo: item.title,
+          link: item.link,
           ...clasificacion,
         });
       }
