@@ -14,7 +14,7 @@ function parseAtomFeed(xml) {
   const entries = doc.getElementsByTagName("entry");
   const items = [];
 
-  for (let i = 0; i < Math.min(entries.length, 5); i++) {
+  for (let i = 0; i < Math.min(entries.length, 150); i++) {
     const entry = entries[i];
     const title =
       entry.getElementsByTagName("title")[0]?.textContent || "Sin título";
