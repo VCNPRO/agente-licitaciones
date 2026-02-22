@@ -1,6 +1,8 @@
 import { VertexAI } from "@google-cloud/vertexai";
 import { DOMParser } from "@xmldom/xmldom";
 import nodemailer from "nodemailer";
+import { kv } from "@vercel/kv";
+import crypto from "crypto";
 
 const FEED_URL =
   "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom";
@@ -26,6 +28,10 @@ function parseAtomFeed(xml) {
   }
 
   return items;
+}
+
+function entryId(link) {
+  return crypto.createHash("sha256").update(link).digest("hex").slice(0, 12);
 }
 
 function buildPrompt(item) {
@@ -168,10 +174,18 @@ export default async function handler(req, res) {
     const xml = await feedResponse.text();
     const items = parseAtomFeed(xml);
 
-    // --- Clasificación ---
+    // --- Clasificación (con deduplicación KV) ---
     const oportunidades = [];
+    let skipped = 0;
 
     for (const item of items) {
+      const id = entryId(item.link);
+      const seen = await kv.get(`seen:${id}`);
+      if (seen) {
+        skipped++;
+        continue;
+      }
+
       const prompt = buildPrompt(item);
 
       const result = await model.generateContent(prompt);
@@ -180,6 +194,8 @@ export default async function handler(req, res) {
         response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
 
       const clasificacion = JSON.parse(text);
+
+      await kv.set(`seen:${id}`, 1, { ex: 30 * 24 * 3600 });
 
       if (clasificacion.Aplicacion_Mediasolam !== "DESCARTADO") {
         oportunidades.push({
@@ -200,7 +216,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ success: true, oportunidades });
+    return res.status(200).json({ success: true, skipped, oportunidades });
   } catch (err) {
     console.error("Error en /api/scout:", err);
     return res.status(500).json({ error: err.message });
