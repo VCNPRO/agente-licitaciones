@@ -4,5 +4,8 @@
       "path": "/api/scout",
       "schedule": "*/30 8-18 * * 1-5"
     }
+  ],
+  "rewrites": [
+    { "source": "/", "destination": "/public/index.html" }
   ]
 }
