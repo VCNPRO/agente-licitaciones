@@ -1,223 +1,231 @@
-import { VertexAI } from "@google-cloud/vertexai";
-import { DOMParser } from "@xmldom/xmldom";
-import nodemailer from "nodemailer";
 import { kv } from "@vercel/kv";
-import crypto from "crypto";
-
-const FEED_URL =
-  "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom";
-
-const SYSTEM_PROMPT = `Eres un experto clasificador de licitaciones públicas B2B para Mediasolam. Clasifica este contrato en una de estas apps: SCRIPTORIUMIA, VERBADOCSALUD, ANNALYSISMEDIA, VERBADOCPRO, VIDEOCONVERSION, o DESCARTADO. Devuelve SOLO un JSON válido con estas claves: Aplicacion_Mediasolam, Nivel_de_Encaje, Presupuesto_Estimado, Resumen_Ejecutivo, Angulo_de_Venta.`;
-
-function parseAtomFeed(xml) {
-  const doc = new DOMParser().parseFromString(xml, "text/xml");
-  const entries = doc.getElementsByTagName("entry");
-  const items = [];
-
-  for (let i = 0; i < Math.min(entries.length, 150); i++) {
-    const entry = entries[i];
-    const title =
-      entry.getElementsByTagName("title")[0]?.textContent || "Sin título";
-    const summary =
-      entry.getElementsByTagName("summary")[0]?.textContent || "Sin descripción";
-    const linkEl = entry.getElementsByTagName("link")[0];
-    const link = linkEl?.getAttribute("href") || "";
-    const id = entry.getElementsByTagName("id")[0]?.textContent || "";
-
-    items.push({ title, summary, link, id });
-  }
-
-  return items;
-}
-
-function entryId(link) {
-  return crypto.createHash("sha256").update(link).digest("hex").slice(0, 12);
-}
-
-function buildPrompt(item) {
-  return `${SYSTEM_PROMPT}\n\nTítulo: ${item.title}\nDescripción: ${item.summary}`;
-}
-
-function getVertexClient() {
-  const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON;
-  if (!credentialsJson) {
-    throw new Error("GOOGLE_CREDENTIALS_JSON no está configurada");
-  }
-
-  const credentials = JSON.parse(credentialsJson);
-
-  return new VertexAI({
-    project: process.env.GOOGLE_PROJECT_ID,
-    location: "europe-west4",
-    googleAuthOptions: {
-      credentials,
-    },
-  });
-}
-
-function buildEmailHtml(oportunidades) {
-  const fecha = new Date().toLocaleDateString("es-ES", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
-  const rows = oportunidades
-    .map(
-      (op) => `
-      <tr>
-        <td style="padding:12px 16px;border-bottom:1px solid #e5e7eb;">
-          <a href="${op.link}" style="color:#2563eb;text-decoration:none;font-weight:600;">${op.titulo}</a>
-        </td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e5e7eb;">
-          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:4px;font-size:13px;font-weight:600;">${op.Aplicacion_Mediasolam}</span>
-        </td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e5e7eb;text-align:center;">${op.Nivel_de_Encaje}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${op.Presupuesto_Estimado}</td>
-      </tr>
-      <tr>
-        <td colspan="4" style="padding:8px 16px 16px;border-bottom:2px solid #e5e7eb;background:#f9fafb;">
-          <p style="margin:0 0 6px;font-size:13px;color:#6b7280;font-weight:600;">Resumen Ejecutivo</p>
-          <p style="margin:0 0 10px;font-size:14px;color:#374151;">${op.Resumen_Ejecutivo}</p>
-          <p style="margin:0 0 6px;font-size:13px;color:#6b7280;font-weight:600;">Ángulo de Venta</p>
-          <p style="margin:0;font-size:14px;color:#374151;">${op.Angulo_de_Venta}</p>
-        </td>
-      </tr>`
-    )
-    .join("");
-
-  return `
-  <!DOCTYPE html>
-  <html lang="es">
-  <head><meta charset="UTF-8"></head>
-  <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-    <div style="max-width:720px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-
-      <div style="background:linear-gradient(135deg,#1e40af,#3b82f6);padding:32px;text-align:center;">
-        <h1 style="margin:0;color:#ffffff;font-size:22px;">🚨 Nuevas Licitaciones Detectadas</h1>
-        <p style="margin:8px 0 0;color:#bfdbfe;font-size:14px;">${fecha} · ${oportunidades.length} oportunidad${oportunidades.length > 1 ? "es" : ""}</p>
-      </div>
-
-      <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
-        <thead>
-          <tr style="background:#f9fafb;">
-            <th style="padding:12px 16px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Licitación</th>
-            <th style="padding:12px 16px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">App</th>
-            <th style="padding:12px 16px;text-align:center;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Encaje</th>
-            <th style="padding:12px 16px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Presupuesto</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>
-
-      <div style="padding:24px;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb;">
-        <p style="margin:0;font-size:12px;color:#9ca3af;">Generado automáticamente por <strong>Agente Licitaciones</strong> · Mediasolam</p>
-      </div>
-    </div>
-  </body>
-  </html>`;
-}
-
-async function sendEmail(oportunidades) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  await transporter.sendMail({
-    from: `"Agente Licitaciones" <${process.env.SMTP_USER}>`,
-    to: process.env.EMAIL_TO,
-    subject: "🚨 [Mediasolam] Nuevas Licitaciones Encontradas",
-    html: buildEmailHtml(oportunidades),
-  });
-}
+import { parseAtomFeed, entryId } from "./_lib/feed-parser.js";
+import { getVertexClient, classifyItem } from "./_lib/classifier.js";
+import { sendEmail } from "./_lib/email.js";
+import {
+  saveOpportunity,
+  saveExecutionLog,
+  updateDailyStats,
+  updateSummaryStats,
+  cleanupOldIndexes,
+  loadConfig,
+} from "./_lib/persistence.js";
+import {
+  keys,
+  TTL,
+  MAX_NEW_PER_FEED,
+  BATCH_SIZE,
+  normalizeEncaje,
+  todayStr,
+  DEFAULT_FEEDS,
+  DEFAULT_ALERTS,
+} from "./_lib/kv-schema.js";
 
 export default async function handler(req, res) {
-  // --- Auth ---
   const authHeader = req.headers["authorization"];
   const expected = `Bearer ${process.env.CRON_SECRET}`;
-
   if (!authHeader || authHeader !== expected) {
     return res.status(401).json({ error: "No autorizado" });
   }
 
+  const startTime = Date.now();
+  const today = todayStr();
+  const logEntry = {
+    timestamp: startTime,
+    date: today,
+    feeds: [],
+    totalProcessed: 0,
+    totalNew: 0,
+    totalRelevant: 0,
+    totalDescartado: 0,
+    emailSent: false,
+    errors: [],
+    durationMs: 0,
+  };
+
   try {
-    // --- Vertex AI ---
+    // Load config
+    const feedsConfig = await loadConfig(keys.configFeeds(), DEFAULT_FEEDS);
+    const alertsConfig = await loadConfig(keys.configAlerts(), DEFAULT_ALERTS);
+    const enabledFeeds = feedsConfig.filter((f) => f.enabled);
+
+    // Vertex AI model
     const vertexAI = getVertexClient();
     const model = vertexAI.getGenerativeModel({
       model: "gemini-2.0-flash",
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
+      generationConfig: { responseMimeType: "application/json" },
     });
 
-    // --- Atom Feed ---
-    const feedResponse = await fetch(FEED_URL, {
-      headers: {
-        Accept: "application/atom+xml",
-        "User-Agent": "AgenteLicitaciones/1.0",
-      },
-    });
+    const allClassified = [];
 
-    if (!feedResponse.ok) {
-      throw new Error(`Feed HTTP ${feedResponse.status}`);
-    }
+    // Process each enabled feed
+    for (const feed of enabledFeeds) {
+      const feedLog = {
+        id: feed.id,
+        name: feed.name,
+        itemsFetched: 0,
+        skipped: 0,
+        classified: 0,
+        errors: 0,
+      };
 
-    const xml = await feedResponse.text();
-    const items = parseAtomFeed(xml);
-
-    // --- Clasificación (con deduplicación KV) ---
-    const oportunidades = [];
-    let skipped = 0;
-
-    for (const item of items) {
-      const id = entryId(item.link);
-      const seen = await kv.get(`seen:${id}`);
-      if (seen) {
-        skipped++;
-        continue;
-      }
-
-      const prompt = buildPrompt(item);
-
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      const text =
-        response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-      const clasificacion = JSON.parse(text);
-
-      await kv.set(`seen:${id}`, 1, { ex: 30 * 24 * 3600 });
-
-      if (clasificacion.Aplicacion_Mediasolam !== "DESCARTADO") {
-        oportunidades.push({
-          titulo: item.title,
-          link: item.link,
-          ...clasificacion,
-        });
-      }
-    }
-
-    // --- Email ---
-    if (oportunidades.length > 0) {
       try {
-        await sendEmail(oportunidades);
-        console.log(`Email enviado con ${oportunidades.length} oportunidades`);
-      } catch (emailErr) {
-        console.error("Error enviando email:", emailErr.message);
+        const feedResponse = await fetch(feed.url, {
+          headers: {
+            Accept: "application/atom+xml",
+            "User-Agent": "AgenteLicitaciones/2.0",
+          },
+        });
+
+        if (!feedResponse.ok) {
+          throw new Error(`Feed HTTP ${feedResponse.status}`);
+        }
+
+        const xml = await feedResponse.text();
+        const items = parseAtomFeed(xml);
+        feedLog.itemsFetched = items.length;
+
+        // Filter unseen items
+        const newItems = [];
+        for (const item of items) {
+          if (newItems.length >= MAX_NEW_PER_FEED) break;
+          const id = entryId(item.link);
+          const seen = await kv.get(keys.seen(id));
+          if (seen) {
+            feedLog.skipped++;
+            continue;
+          }
+          newItems.push({ ...item, _id: id });
+        }
+
+        // Classify in parallel batches
+        for (let i = 0; i < newItems.length; i += BATCH_SIZE) {
+          const batch = newItems.slice(i, i + BATCH_SIZE);
+          const results = await Promise.allSettled(
+            batch.map(async (item) => {
+              const clasificacion = await classifyItem(item, model);
+              const encaje = normalizeEncaje(clasificacion.Nivel_de_Encaje);
+              const oppData = {
+                id: item._id,
+                titulo: item.title,
+                link: item.link,
+                feedId: feed.id,
+                feedName: feed.name,
+                Aplicacion_Mediasolam: clasificacion.Aplicacion_Mediasolam || "DESCARTADO",
+                Nivel_de_Encaje: encaje,
+                Presupuesto_Estimado: clasificacion.Presupuesto_Estimado || "No especificado",
+                Resumen_Ejecutivo: clasificacion.Resumen_Ejecutivo || "",
+                Angulo_de_Venta: clasificacion.Angulo_de_Venta || "",
+                clasificadoEn: Date.now(),
+                fechaStr: today,
+              };
+
+              // Mark as seen
+              await kv.set(keys.seen(item._id), 1, { ex: TTL.SEEN });
+              // Persist opportunity
+              await saveOpportunity(oppData);
+
+              return oppData;
+            })
+          );
+
+          for (const r of results) {
+            if (r.status === "fulfilled") {
+              feedLog.classified++;
+              allClassified.push(r.value);
+            } else {
+              feedLog.errors++;
+              logEntry.errors.push(r.reason?.message || "Classification error");
+            }
+          }
+        }
+      } catch (feedErr) {
+        feedLog.errors++;
+        logEntry.errors.push(`Feed ${feed.id}: ${feedErr.message}`);
+      }
+
+      logEntry.feeds.push(feedLog);
+      logEntry.totalProcessed += feedLog.itemsFetched;
+      logEntry.totalNew += feedLog.classified;
+    }
+
+    // Count relevant vs descartado
+    const relevant = allClassified.filter(
+      (o) => o.Aplicacion_Mediasolam !== "DESCARTADO"
+    );
+    const descartado = allClassified.filter(
+      (o) => o.Aplicacion_Mediasolam === "DESCARTADO"
+    );
+    logEntry.totalRelevant = relevant.length;
+    logEntry.totalDescartado = descartado.length;
+
+    // Send email based on alert config
+    if (alertsConfig.enabled && relevant.length > 0) {
+      const encajeOrder = { ALTO: 3, MEDIO: 2, BAJO: 1 };
+      const minLevel = encajeOrder[alertsConfig.minEncaje] || 1;
+      const allowedApps = new Set(alertsConfig.apps || []);
+
+      const toEmail = relevant.filter((o) => {
+        const level = encajeOrder[o.Nivel_de_Encaje] || 1;
+        return level >= minLevel && allowedApps.has(o.Aplicacion_Mediasolam);
+      });
+
+      if (toEmail.length > 0) {
+        try {
+          const recipients =
+            alertsConfig.emailTo && alertsConfig.emailTo.length > 0
+              ? alertsConfig.emailTo
+              : null;
+          const sent = await sendEmail(toEmail, recipients);
+          logEntry.emailSent = sent;
+        } catch (emailErr) {
+          logEntry.errors.push(`Email: ${emailErr.message}`);
+        }
       }
     }
 
-    return res.status(200).json({ success: true, skipped, oportunidades });
+    // Update stats
+    if (allClassified.length > 0) {
+      await updateDailyStats(today, allClassified);
+      const byApp = {};
+      const byEncaje = {};
+      for (const o of allClassified) {
+        byApp[o.Aplicacion_Mediasolam] = (byApp[o.Aplicacion_Mediasolam] || 0) + 1;
+        byEncaje[o.Nivel_de_Encaje] = (byEncaje[o.Nivel_de_Encaje] || 0) + 1;
+      }
+      await updateSummaryStats({
+        totalOpps: allClassified.length,
+        emailSent: logEntry.emailSent,
+        byApp,
+        byEncaje,
+      });
+    } else {
+      await updateSummaryStats({ totalOpps: 0, emailSent: false, byApp: {}, byEncaje: {} });
+    }
+
+    // Save execution log
+    logEntry.durationMs = Date.now() - startTime;
+    await saveExecutionLog(logEntry);
+
+    // Cleanup old indexes (non-blocking)
+    cleanupOldIndexes().catch((e) =>
+      console.error("Cleanup error:", e.message)
+    );
+
+    return res.status(200).json({
+      success: true,
+      processed: logEntry.totalProcessed,
+      newClassified: logEntry.totalNew,
+      relevant: logEntry.totalRelevant,
+      descartado: logEntry.totalDescartado,
+      emailSent: logEntry.emailSent,
+      durationMs: logEntry.durationMs,
+      errors: logEntry.errors,
+    });
   } catch (err) {
+    logEntry.durationMs = Date.now() - startTime;
+    logEntry.errors.push(err.message);
+    await saveExecutionLog(logEntry).catch(() => {});
     console.error("Error en /api/scout:", err);
     return res.status(500).json({ error: err.message });
   }

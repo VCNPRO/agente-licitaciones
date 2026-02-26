@@ -1,95 +1,239 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard de Licitaciones</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agente Licitaciones — Mediasolam</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: 600; }
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .badge-alto { background: #dcfce7; color: #166534; }
+    .badge-medio { background: #fef9c3; color: #854d0e; }
+    .badge-bajo { background: #fee2e2; color: #991b1b; }
+    .badge-app { background: #dbeafe; color: #1e40af; }
+    .badge-descartado { background: #f3f4f6; color: #6b7280; }
+    .kpi-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .expand-row { display: none; }
+    .expand-row.open { display: table-row; }
+    .spinner { border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; width: 24px; height: 24px; animation: spin .6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    nav button { transition: all .15s; }
+    nav button:hover { color: #2563eb; }
+  </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <div class="bg-white p-8 rounded-lg shadow-lg max-w-md w-full">
-        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Dashboard Agente de Licitaciones</h1>
-
-        <div class="mb-4">
-            <h2 class="text-xl font-semibold text-gray-700 mb-2">Estado del Agente</h2>
-            <div id="agent-status" class="p-3 rounded-md text-center font-medium">
-                Cargando...
-            </div>
-        </div>
-
-        <div class="mb-4">
-            <h2 class="text-xl font-semibold text-gray-700 mb-2">Total de Licitaciones Analizadas</h2>
-            <div id="tender-count" class="p-3 bg-blue-100 text-blue-800 rounded-md text-center text-2xl font-bold">
-                Cargando...
-            </div>
-        </div>
-
-        <div class="mb-4">
-            <h2 class="text-xl font-semibold text-gray-700 mb-2">Resumen de Última Ejecución</h2>
-            <div id="last-execution-summary" class="p-3 bg-gray-100 text-gray-700 rounded-md text-center">
-                Cargando...
-            </div>
-        </div>
-
-        <div>
-            <h2 class="text-xl font-semibold text-gray-700 mb-2">Errores Detectados</h2>
-            <div id="errors-section" class="p-3 bg-green-100 text-green-800 rounded-md">
-                No hay errores.
-            </div>
-        </div>
+<body class="bg-gray-100 min-h-screen">
+  <!-- Header -->
+  <header class="bg-gradient-to-r from-blue-800 to-blue-500 text-white shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 py-5 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold">Agente Licitaciones</h1>
+        <p class="text-blue-200 text-sm">Mediasolam — Panel de Control</p>
+      </div>
+      <div id="header-status" class="text-sm bg-white/20 px-3 py-1 rounded-full">Cargando...</div>
     </div>
+  </header>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', async () => {
-            const agentStatusElement = document.getElementById('agent-status');
-            const tenderCountElement = document.getElementById('tender-count');
-            const errorsSectionElement = document.getElementById('errors-section');
-            const lastExecutionSummaryElement = document.getElementById('last-execution-summary');
+  <!-- Tabs -->
+  <nav class="bg-white shadow-sm sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
+      <button onclick="navigate('overview')" data-tab="overview" class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap tab-active">Resumen</button>
+      <button onclick="navigate('opportunities')" data-tab="opportunities" class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">Oportunidades</button>
+      <button onclick="navigate('executions')" data-tab="executions" class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">Ejecuciones</button>
+      <button onclick="navigate('stats')" data-tab="stats" class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">Estadísticas</button>
+      <button onclick="navigate('config')" data-tab="config" class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">Configuración</button>
+    </div>
+  </nav>
 
-            try {
-                const response = await fetch('/api/dashboard-data');
-                const data = await response.json();
+  <!-- Main content -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
 
-                // Update Agent Status
-                agentStatusElement.textContent = data.status;
-                if (data.status === 'Activo') {
-                    agentStatusElement.classList.add('bg-green-100', 'text-green-800');
-                    agentStatusElement.classList.remove('bg-red-100', 'text-red-800');
-                } else {
-                    agentStatusElement.classList.add('bg-red-100', 'text-red-800');
-                    agentStatusElement.classList.remove('bg-green-100', 'text-green-800');
-                }
+    <!-- TAB: Overview -->
+    <section id="tab-overview">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="kpi-card">
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Total Oportunidades</p>
+          <p id="kpi-total" class="text-2xl font-bold text-gray-800 mt-1">—</p>
+        </div>
+        <div class="kpi-card">
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Hoy</p>
+          <p id="kpi-today" class="text-2xl font-bold text-blue-600 mt-1">—</p>
+        </div>
+        <div class="kpi-card">
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Ratio Relevantes</p>
+          <p id="kpi-ratio" class="text-2xl font-bold text-green-600 mt-1">—</p>
+        </div>
+        <div class="kpi-card">
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Emails Enviados</p>
+          <p id="kpi-emails" class="text-2xl font-bold text-purple-600 mt-1">—</p>
+        </div>
+      </div>
 
-                // Update Tender Count
-                tenderCountElement.textContent = data.licitacionesAnalizadas;
+      <!-- Last execution -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Última Ejecución</h2>
+        <div id="last-exec-info" class="text-sm text-gray-600">Cargando...</div>
+      </div>
 
-                // Update Last Execution Summary
-                lastExecutionSummaryElement.textContent = data.lastExecutionSummary;
+      <!-- Trend chart -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Tendencia 7 Días</h2>
+        <canvas id="chart-trend" height="200"></canvas>
+      </div>
 
-                // Update Errors Section
-                if (data.errores && data.errores.length > 0) {
-                    errorsSectionElement.classList.add('bg-red-100', 'text-red-800');
-                    errorsSectionElement.classList.remove('bg-green-100', 'text-green-800');
-                    errorsSectionElement.innerHTML = data.errores.map(err => `<p>${err.message}</p>`).join('');
-                } else {
-                    errorsSectionElement.textContent = 'No hay errores.';
-                    errorsSectionElement.classList.add('bg-green-100', 'text-green-800');
-                    errorsSectionElement.classList.remove('bg-red-100', 'text-red-800');
-                }
+      <!-- Recent -->
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Oportunidades Recientes</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-xs text-gray-500 uppercase border-b">
+              <th class="pb-2">Título</th><th class="pb-2">App</th><th class="pb-2 text-center">Encaje</th><th class="pb-2 text-right">Presupuesto</th>
+            </tr></thead>
+            <tbody id="recent-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
-            } catch (error) {
-                console.error('Error fetching dashboard data:', error);
-                agentStatusElement.textContent = 'Error al cargar';
-                agentStatusElement.classList.add('bg-red-100', 'text-red-800');
-                agentStatusElement.classList.remove('bg-green-100', 'text-green-800');
-                tenderCountElement.textContent = 'N/A';
-                lastExecutionSummaryElement.textContent = 'Error al cargar resumen.';
-                errorsSectionElement.textContent = 'Error de conexión con la API.';
-                errorsSectionElement.classList.add('bg-red-100', 'text-red-800');
-                errorsSectionElement.classList.remove('bg-green-100', 'text-red-800');
-            }
-        });
-    </script>
+    <!-- TAB: Opportunities -->
+    <section id="tab-opportunities" class="hidden">
+      <!-- Filters -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-end">
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">App</label>
+          <select id="filter-app" class="border rounded px-3 py-1.5 text-sm">
+            <option value="">Todas</option>
+            <option>SCRIPTORIUMIA</option><option>VERBADOCSALUD</option><option>ANNALYSISMEDIA</option>
+            <option>VERBADOCPRO</option><option>VIDEOCONVERSION</option><option>DESCARTADO</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Encaje</label>
+          <select id="filter-encaje" class="border rounded px-3 py-1.5 text-sm">
+            <option value="">Todos</option><option>ALTO</option><option>MEDIO</option><option>BAJO</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Desde</label>
+          <input type="date" id="filter-from" class="border rounded px-3 py-1.5 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Hasta</label>
+          <input type="date" id="filter-to" class="border rounded px-3 py-1.5 text-sm">
+        </div>
+        <div class="flex-1 min-w-[200px]">
+          <label class="text-xs text-gray-500 block mb-1">Buscar</label>
+          <input type="text" id="filter-search" placeholder="Buscar en títulos y resúmenes..." class="border rounded px-3 py-1.5 text-sm w-full">
+        </div>
+        <button onclick="loadOpportunities(1)" class="bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-blue-700">Filtrar</button>
+      </div>
+
+      <!-- Table -->
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+              <th class="px-4 py-3">Título</th><th class="px-4 py-3">App</th><th class="px-4 py-3 text-center">Encaje</th><th class="px-4 py-3 text-right">Presupuesto</th><th class="px-4 py-3 text-center">Fecha</th>
+            </tr></thead>
+            <tbody id="opps-tbody"></tbody>
+          </table>
+        </div>
+        <div id="opps-pagination" class="flex items-center justify-between px-4 py-3 border-t text-sm text-gray-500"></div>
+      </div>
+    </section>
+
+    <!-- TAB: Executions -->
+    <section id="tab-executions" class="hidden">
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+              <th class="px-4 py-3">Fecha/Hora</th><th class="px-4 py-3">Feed</th><th class="px-4 py-3 text-center">Procesados</th><th class="px-4 py-3 text-center">Nuevos</th><th class="px-4 py-3 text-center">Relevantes</th><th class="px-4 py-3 text-center">Email</th><th class="px-4 py-3 text-right">Duración</th><th class="px-4 py-3 text-center">Errores</th>
+            </tr></thead>
+            <tbody id="exec-tbody"></tbody>
+          </table>
+        </div>
+        <div id="exec-pagination" class="flex items-center justify-between px-4 py-3 border-t text-sm text-gray-500"></div>
+      </div>
+    </section>
+
+    <!-- TAB: Stats -->
+    <section id="tab-stats" class="hidden">
+      <div class="flex gap-2 mb-4">
+        <button onclick="loadStats('7d')" class="stat-period px-3 py-1.5 rounded text-sm bg-blue-600 text-white" data-period="7d">7 días</button>
+        <button onclick="loadStats('30d')" class="stat-period px-3 py-1.5 rounded text-sm bg-gray-200 text-gray-700" data-period="30d">30 días</button>
+        <button onclick="loadStats('90d')" class="stat-period px-3 py-1.5 rounded text-sm bg-gray-200 text-gray-700" data-period="90d">90 días</button>
+      </div>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <h3 class="text-sm font-semibold text-gray-500 uppercase mb-3">Oportunidades / Día</h3>
+          <canvas id="chart-daily"></canvas>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <h3 class="text-sm font-semibold text-gray-500 uppercase mb-3">Distribución por App</h3>
+          <canvas id="chart-apps"></canvas>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <h3 class="text-sm font-semibold text-gray-500 uppercase mb-3">Distribución por Encaje</h3>
+          <canvas id="chart-encaje"></canvas>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <h3 class="text-sm font-semibold text-gray-500 uppercase mb-3">Resumen del Período</h3>
+          <div id="stats-summary" class="text-sm text-gray-600 space-y-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: Config -->
+    <section id="tab-config" class="hidden">
+      <div class="grid md:grid-cols-2 gap-4">
+        <!-- Feeds -->
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Feeds RSS/Atom</h2>
+          <div id="feeds-list" class="space-y-3 mb-4"></div>
+          <button onclick="addFeed()" class="text-blue-600 text-sm font-medium hover:underline">+ Añadir feed</button>
+        </div>
+        <!-- Alerts -->
+        <div class="bg-white rounded-xl shadow-sm p-5">
+          <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Alertas por Email</h2>
+          <div class="space-y-3">
+            <label class="flex items-center gap-2">
+              <input type="checkbox" id="cfg-alerts-enabled" checked class="rounded">
+              <span class="text-sm">Alertas activadas</span>
+            </label>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Encaje mínimo</label>
+              <select id="cfg-min-encaje" class="border rounded px-3 py-1.5 text-sm w-full">
+                <option value="BAJO">BAJO (todas)</option><option value="MEDIO">MEDIO y ALTO</option><option value="ALTO">Solo ALTO</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Apps a rastrear</label>
+              <div id="cfg-apps" class="space-y-1"></div>
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Destinatarios (uno por línea)</label>
+              <textarea id="cfg-email-to" rows="3" class="border rounded px-3 py-1.5 text-sm w-full" placeholder="email@ejemplo.com"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-4 flex items-center gap-3">
+        <button onclick="saveConfig()" class="bg-blue-600 text-white px-6 py-2 rounded font-medium text-sm hover:bg-blue-700">Guardar Configuración</button>
+        <span id="config-status" class="text-sm text-gray-500"></span>
+      </div>
+      <p class="mt-3 text-xs text-gray-400">Para guardar, se requiere la clave CRON_SECRET como autorización.</p>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="text-center py-6 text-xs text-gray-400">
+    Agente Licitaciones v2.0 — Mediasolam
+  </footer>
+
+  <script src="/js/app.js"></script>
 </body>
 </html>
