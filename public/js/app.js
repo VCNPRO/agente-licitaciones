@@ -363,6 +363,78 @@ async function loadConfigData() {
   } catch (e) {
     console.error("Config load error:", e);
   }
+
+  // Load CPV codes
+  loadCpvCodes();
+}
+
+// CPV descriptions for display
+const CPV_DESCRIPTIONS = {
+  "79560000": "Servicios de archivo",
+  "92500000": "Bibliotecas, archivos, museos y culturales",
+  "92510000": "Servicios de bibliotecas y archivos",
+  "92512000": "Servicios de archivos",
+  "92512100": "Destrucción de archivos",
+  "72252000": "Archivo informático",
+  "72512000": "Gestión de documentos",
+  "72300000": "Servicios relacionados con datos",
+  "72310000": "Tratamiento de datos",
+  "72320000": "Servicios de bases de datos",
+  "72330000": "Normalización y clasificación de contenidos",
+  "72920000": "Conversión informática de catálogos",
+  "79999100": "Servicios de escaneado",
+  "79811000": "Impresión digital",
+  "79824000": "Impresión y distribución",
+  "79963000": "Restauración y retocado de fotografías",
+  "72000000": "Servicios TI: consultoría, desarrollo, Internet",
+  "72260000": "Servicios de software",
+  "48000000": "Paquetes de software y sistemas de información",
+  "48422000": "Software gestión de documentos",
+  "48490000": "Software para adquisiciones y gestión",
+  "48810000": "Sistemas de información",
+  "48814000": "Sistemas de información de gestión",
+  "72200000": "Programación y consultoría",
+  "72212000": "Programación de software de aplicación",
+  "73000000": "Servicios de I+D y consultoría",
+  "73120000": "I+D experimental",
+  "72400000": "Servicios de Internet",
+  "72415000": "Alojamiento web",
+  "72250000": "Mantenimiento y apoyo de sistemas",
+  "72221000": "Análisis de sistemas empresariales",
+  "79530000": "Servicios de traducción",
+  "79131000": "Servicios de archivística",
+  "72312000": "Entrada de datos",
+  "72312100": "Preparación de datos",
+};
+
+async function loadCpvCodes() {
+  try {
+    const data = await api("/api/cpv");
+    const cpvList = data.cpv || [];
+    document.getElementById("cpv-count").textContent = `${cpvList.length} códigos`;
+
+    // Group by apps
+    const byApp = {};
+    for (const { code, apps } of cpvList) {
+      for (const app of apps) {
+        if (!byApp[app]) byApp[app] = [];
+        byApp[app].push(code);
+      }
+    }
+
+    const el = document.getElementById("cpv-list");
+    el.innerHTML = Object.entries(byApp).sort(([a], [b]) => a.localeCompare(b)).map(([app, codes]) => `
+      <div class="mb-3">
+        <div class="flex items-center gap-2 mb-1.5">${appBadge(app)} <span class="text-xs text-gray-400">(${codes.length} códigos)</span></div>
+        <div class="flex flex-wrap gap-1">
+          ${codes.map(c => `<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded cursor-default" title="${escAttr(CPV_DESCRIPTIONS[c] || c)}">${c} <span class="text-gray-400">— ${escHtml((CPV_DESCRIPTIONS[c] || "").substring(0, 40))}</span></span>`).join("")}
+        </div>
+      </div>
+    `).join("");
+  } catch (e) {
+    document.getElementById("cpv-list").textContent = "Error al cargar CPVs";
+    console.error("CPV load error:", e);
+  }
 }
 
 function addFeed() {

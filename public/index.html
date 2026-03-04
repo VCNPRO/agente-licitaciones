@@ -228,7 +228,16 @@
         <button onclick="saveConfig()" class="bg-blue-600 text-white px-6 py-2 rounded font-medium text-sm hover:bg-blue-700">Guardar Configuración</button>
         <span id="config-status" class="text-sm text-gray-500"></span>
       </div>
-      <p class="mt-3 text-xs text-gray-400">Para guardar, se requiere la clave CRON_SECRET como autorización.</p>
+
+      <!-- CPV Codes -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mt-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-500 uppercase">Códigos CPV Activos (Pre-filtrado)</h2>
+          <span id="cpv-count" class="text-xs text-gray-400"></span>
+        </div>
+        <p class="text-xs text-gray-400 mb-3">Las licitaciones cuyo CPV coincida con estos códigos se clasifican con IA. El resto se descarta automáticamente antes de llegar a Gemini.</p>
+        <div id="cpv-list" class="text-sm text-gray-600">Cargando...</div>
+      </div>
     </section>
 
     <!-- TAB: Manual -->
@@ -270,7 +279,11 @@
             </div>
             <div class="flex gap-3 items-start">
               <span class="bg-gray-100 text-gray-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">C</span>
-              <p class="text-gray-700"><strong>Clasificación IA:</strong> Las licitaciones nuevas se envían a Gemini 2.0 Flash, que determina la app más adecuada, el nivel de encaje, presupuesto estimado, resumen ejecutivo y ángulo de venta.</p>
+              <p class="text-gray-700"><strong>Pre-filtrado CPV:</strong> Se extraen los códigos CPV de cada licitación. Solo las que coinciden con los 35+ códigos relevantes configurados pasan a clasificación IA. El resto se descarta directamente (ahorro de tokens y mayor precisión).</p>
+            </div>
+            <div class="flex gap-3 items-start">
+              <span class="bg-gray-100 text-gray-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">D</span>
+              <p class="text-gray-700"><strong>Clasificación IA:</strong> Las licitaciones filtradas se envían a Gemini 2.0 Flash con contexto enriquecido (título, descripción, CPV, presupuesto, organismo). La IA determina la app más adecuada, el nivel de encaje, resumen ejecutivo y ángulo de venta.</p>
             </div>
             <div class="flex gap-3 items-start">
               <span class="bg-gray-100 text-gray-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">D</span>
