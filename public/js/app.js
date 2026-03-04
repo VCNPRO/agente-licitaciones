@@ -86,6 +86,7 @@ async function loadOverview() {
           <span><strong>Procesados:</strong> ${exec.totalProcessed || 0}</span>
           <span><strong>Nuevos:</strong> ${exec.totalNew || 0}</span>
           <span><strong>Relevantes:</strong> ${exec.totalRelevant || 0}</span>
+          ${exec.totalFilteredByCpv ? `<span class="text-orange-600"><strong>Filtrados CPV:</strong> ${exec.totalFilteredByCpv}</span>` : ""}
           <span><strong>Email:</strong> ${exec.emailSent ? "Si" : "No"}</span>
           <span><strong>Duración:</strong> ${exec.durationMs ? (exec.durationMs / 1000).toFixed(1) + "s" : "—"}</span>
           ${exec.errors && exec.errors.length > 0 ? `<span class="text-red-600"><strong>Errores:</strong> ${exec.errors.length}</span>` : ""}
@@ -171,6 +172,8 @@ async function loadOpportunities(page) {
         </tr>
         <tr class="expand-row bg-gray-50">
           <td colspan="5" class="px-4 py-3">
+            ${o.organismo ? `<p class="text-xs text-gray-500 font-semibold mb-1">Organismo</p><p class="text-sm text-gray-700 mb-2">${escHtml(o.organismo)}</p>` : ""}
+            ${o.cpvCodes && o.cpvCodes.length > 0 ? `<p class="text-xs text-gray-500 font-semibold mb-1">CPV</p><p class="text-sm text-gray-700 mb-2">${o.cpvCodes.map(c => `<span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded mr-1 mb-1">${escHtml(c)}</span>`).join("")}</p>` : ""}
             <p class="text-xs text-gray-500 font-semibold mb-1">Resumen Ejecutivo</p>
             <p class="text-sm text-gray-700 mb-2">${escHtml(o.Resumen_Ejecutivo || "—")}</p>
             <p class="text-xs text-gray-500 font-semibold mb-1">Ángulo de Venta</p>

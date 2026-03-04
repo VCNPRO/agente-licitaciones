@@ -19,6 +19,7 @@ import {
   todayStr,
   DEFAULT_FEEDS,
   DEFAULT_ALERTS,
+  matchCpvToApps,
 } from "./_lib/kv-schema.js";
 
 export default async function handler(req, res) {
@@ -38,6 +39,7 @@ export default async function handler(req, res) {
     totalNew: 0,
     totalRelevant: 0,
     totalDescartado: 0,
+    totalFilteredByCpv: 0,
     emailSent: false,
     errors: [],
     durationMs: 0,
@@ -65,6 +67,7 @@ export default async function handler(req, res) {
         name: feed.name,
         itemsFetched: 0,
         skipped: 0,
+        filteredByCpv: 0,
         classified: 0,
         errors: 0,
       };
@@ -98,9 +101,31 @@ export default async function handler(req, res) {
           newItems.push({ ...item, _id: id });
         }
 
+        // ── CPV pre-filtering ──────────────────────────────────
+        // Only classify items whose CPV matches our relevant codes.
+        // Items without CPV codes still pass (let AI decide).
+        const toClassify = [];
+        for (const item of newItems) {
+          if (item.cpvCodes && item.cpvCodes.length > 0) {
+            const matchedApps = matchCpvToApps(item.cpvCodes);
+            if (matchedApps) {
+              // CPV matches → classify with hint
+              item.cpvHint = matchedApps;
+              toClassify.push(item);
+            } else {
+              // CPV present but doesn't match → skip (mark as seen to avoid re-processing)
+              feedLog.filteredByCpv++;
+              await kv.set(keys.seen(item._id), 1, { ex: TTL.SEEN });
+            }
+          } else {
+            // No CPV codes in entry → let AI classify (some entries lack CPV data)
+            toClassify.push(item);
+          }
+        }
+
         // Classify in parallel batches
-        for (let i = 0; i < newItems.length; i += BATCH_SIZE) {
-          const batch = newItems.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < toClassify.length; i += BATCH_SIZE) {
+          const batch = toClassify.slice(i, i + BATCH_SIZE);
           const results = await Promise.allSettled(
             batch.map(async (item) => {
               const clasificacion = await classifyItem(item, model);
@@ -111,9 +136,12 @@ export default async function handler(req, res) {
                 link: item.link,
                 feedId: feed.id,
                 feedName: feed.name,
+                cpvCodes: item.cpvCodes || [],
+                cpvHint: item.cpvHint || null,
+                organismo: item.organism || "",
                 Aplicacion_Mediasolam: clasificacion.Aplicacion_Mediasolam || "DESCARTADO",
                 Nivel_de_Encaje: encaje,
-                Presupuesto_Estimado: clasificacion.Presupuesto_Estimado || "No especificado",
+                Presupuesto_Estimado: clasificacion.Presupuesto_Estimado || item.budget || "No especificado",
                 Resumen_Ejecutivo: clasificacion.Resumen_Ejecutivo || "",
                 Angulo_de_Venta: clasificacion.Angulo_de_Venta || "",
                 clasificadoEn: Date.now(),
@@ -147,6 +175,7 @@ export default async function handler(req, res) {
       logEntry.feeds.push(feedLog);
       logEntry.totalProcessed += feedLog.itemsFetched;
       logEntry.totalNew += feedLog.classified;
+      logEntry.totalFilteredByCpv += feedLog.filteredByCpv;
     }
 
     // Count relevant vs descartado
@@ -216,6 +245,7 @@ export default async function handler(req, res) {
       success: true,
       processed: logEntry.totalProcessed,
       newClassified: logEntry.totalNew,
+      filteredByCpv: logEntry.totalFilteredByCpv,
       relevant: logEntry.totalRelevant,
       descartado: logEntry.totalDescartado,
       emailSent: logEntry.emailSent,

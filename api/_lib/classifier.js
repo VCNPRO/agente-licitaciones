@@ -1,6 +1,15 @@
 import { VertexAI } from "@google-cloud/vertexai";
 
-const SYSTEM_PROMPT = `Eres un experto clasificador de licitaciones públicas B2B para VCNpro AI. Clasifica este contrato en una de estas apps: SCRIPTORIUMIA, VERBADOCSALUD, ANNALYSISMEDIA, VERBADOCPRO, VIDEOCONVERSION, o DESCARTADO.
+const SYSTEM_PROMPT = `Eres un experto clasificador de licitaciones públicas B2B para VCNpro AI. Clasifica este contrato en una de estas apps:
+
+- SCRIPTORIUMIA: Transcripción, actas, digitalización de documentos históricos, archivos, manuscritos, OCR, IA documental
+- VERBADOCSALUD: Documentación clínica por voz, dictado médico, informes sanitarios, historia clínica electrónica
+- ANNALYSISMEDIA: Análisis y monitorización de medios de comunicación, prensa, clipping, seguimiento informativo
+- VERBADOCPRO: Dictado profesional por voz, gestión documental, tratamiento de datos, software de documentación, SaaS
+- VIDEOCONVERSION: Digitalización y conversión de archivos audiovisuales, escaneado, archivo fotográfico, restauración de imagen, impresión digital
+- DESCARTADO: No encaja con ningún producto
+
+IMPORTANTE: Los códigos CPV (Common Procurement Vocabulary) son la referencia principal para clasificar. Si se proporcionan, úsalos como criterio prioritario.
 
 Devuelve SOLO un JSON válido con estas claves:
 - Aplicacion_Mediasolam: una de las 6 opciones anteriores
@@ -31,7 +40,22 @@ export function getVertexClient() {
 }
 
 export function buildPrompt(item) {
-  return `${SYSTEM_PROMPT}\n\nTítulo: ${item.title}\nDescripción: ${item.summary}`;
+  let prompt = `${SYSTEM_PROMPT}\n\nTítulo: ${item.title}\nDescripción: ${item.summary}`;
+
+  if (item.cpvCodes && item.cpvCodes.length > 0) {
+    prompt += `\nCódigos CPV: ${item.cpvCodes.join(", ")}`;
+  }
+  if (item.budget) {
+    prompt += `\nPresupuesto: ${item.budget}`;
+  }
+  if (item.organism) {
+    prompt += `\nOrganismo: ${item.organism}`;
+  }
+  if (item.cpvHint) {
+    prompt += `\nSugerencia basada en CPV: posible encaje con ${item.cpvHint.join(", ")}`;
+  }
+
+  return prompt;
 }
 
 export async function classifyItem(item, model) {
